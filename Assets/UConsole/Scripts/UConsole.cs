@@ -139,7 +139,7 @@ public class UConsole : MonoBehaviour
         }
     }
 
-    private void ToggleHud()
+    public void ToggleHud()
     {
         consoleHUD.SetActive(enableHUD);
         Log("Hud visibility has been set to " + enableHUD);
