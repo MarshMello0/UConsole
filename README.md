@@ -1,6 +1,6 @@
 # UConsole
 A in game unity console for debugging and much more
-
+![Image of UConsole](https://raw.githubusercontent.com/MarshMello0/UConsole/master/Images/uconsole.PNG)
 
 ## How to install UConsole to your Unity Project!
 
@@ -17,4 +17,17 @@ Then you should be all set up and ready to start using it.
 - Simple drag and drop into your first scene
 - No extra requirements, uses basic unity items.
 
-![Image of UConsole](https://raw.githubusercontent.com/MarshMello0/UConsole/master/Images/uconsole.PNG)
+
+
+## Commands
+
+You can get the instance with 
+```cs
+UConsole.instance
+```
+
+You can create a new command with ``UConsole.instance.AddCommand(UCommand);``. It requires a UCommand.
+
+You can add events when the command is entered by using ``UCommand.callbacks.Add(<method(string[] args)>)``
+
+You can remove commands with ``UConsole.instance.RemoveCommand(string command);``
