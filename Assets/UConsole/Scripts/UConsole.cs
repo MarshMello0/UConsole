@@ -16,6 +16,8 @@ public class UConsole : MonoBehaviour
     public List<UCommand> commands { private set; get; } = new List<UCommand>();
     [Tooltip("Shows the type of message it was, log, warning or error")]
     public bool showType = false;
+    [Tooltip("Shows the unity logs as well in the console")]
+    public bool showUnityLogs = true;
 
     [SerializeField]
     private InputField input;
@@ -49,7 +51,8 @@ public class UConsole : MonoBehaviour
 
     private void LogMessageReceived(string condition, string stackTrace, LogType type)
     {
-        lines.Add((showType ? type.ToString() + ": " : "") + condition);
+        if (showUnityLogs)
+            lines.Add((showType ? type.ToString() + ": " : "") + condition);
     }
     private void CreateDefaultCommands()
     {
@@ -71,10 +74,10 @@ public class UConsole : MonoBehaviour
     {
         if (obj.Length == 0)
         {
-            Debug.Log("All Commands");
+            Log("All Commands");
             for (int i = 0; i < commands.Count; i++)
             {
-                Debug.Log(commands[i].command + " \"" + commands[i].usage + "\"");
+                Log(commands[i].command + " \"" + commands[i].usage + "\"");
             }
         }
         else
@@ -83,7 +86,7 @@ public class UConsole : MonoBehaviour
             {
                 if (commands[i].command.ToLower() == obj[0].ToLower())
                 {
-                    Debug.Log("Command : " + commands[i].command + " \"" + commands[i].usage + "\"");
+                    Log("Command : " + commands[i].command + " \"" + commands[i].usage + "\"");
                     break;
                 }
 
@@ -133,7 +136,7 @@ public class UConsole : MonoBehaviour
     }
     public void RunCommand(string command)
     {
-        Debug.Log(command);
+        Log(command);
         string[] args = command.Split(' ');
         for (int i = 0; i < commands.Count; i++)
         {
@@ -148,9 +151,22 @@ public class UConsole : MonoBehaviour
                 return;
             }
         }
-        Debug.LogError("Unknow command " + command + ". Try \"help\" to see all the commands");
+        LogError("Unknow command " + command + ". Try \"help\" to see all the commands");
     }
-
+    public void Log(object message)
+    {
+        if (!showUnityLogs)
+            lines.Add((showType ? "Log: " : "") + message);
+        else
+            Debug.Log(message);
+    }
+    public void LogError(object message)
+    {
+        if (!showUnityLogs)
+            lines.Add((showType ? "Error: " : "") + message);
+        else
+            Debug.LogError(message);
+    }
     public void AddCommand(UCommand newCommand)
     {
         commands.Add(newCommand);
