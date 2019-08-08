@@ -1,444 +1,186 @@
 ﻿using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
-using TMPro;
 using UnityEngine.UI;
 using System;
 using System.Text.RegularExpressions;
+using System.Linq;
 
-public class UConsole : MonoBehaviour
+namespace UConsole
 {
-    [Header("Settings")]
-    [Tooltip("This will enable the mouse to be used incase of other scripts locking it, when this is check it will also lock back the mouse when finished. Default = False")]
-    public bool enableMouse = false;
-    [Tooltip("Enable Hud shows a HUD in the top right of the screen showing the number of logs, warnings or erros. Default = True")]
-    public bool enableHUD = true;
-    [Tooltip("This is the key to open the console. Default = Back Quote \"`\" ")]
-    public KeyCode consoleKey = KeyCode.BackQuote;
-    [Tooltip("This will cause UConsole to start outputting Debug.Log messages. Default = False")]
-    public bool debugUConsole = false;
-
-
-    /// <summary>
-    /// Is true when the main console window is open. Read Only!
-    /// </summary>
-    public bool isOpen { get; private set; }
-    public int logCount { get; private set; }
-    public int warningCount { get; private set; }
-    public int errorCount { get; private set; }
-    /// <summary>
-    /// This is an array of all the last arguments passed thought, this is split by ' '. Remember the first one is always going to be your command. Read Only!
-    /// </summary>
-    public string[] lastArgs { get; private set; }
-
-    public struct ConsoleMessage
+    public class UConsole : MonoBehaviour
     {
-        public string condition;
-        public string stackTrace;
-        public LogType type;
-    }
+        public static UConsole instance { private set; get; }
+        [Header("Settings")]
+        public KeyCode ToggleConsoleKey = KeyCode.F1;
+        public bool isEnabled { get; private set; } = false;
+        public List<UCommand> commands { private set; get; } = new List<UCommand>();
+        [Tooltip("Shows the type of message it was, log, warning or error")]
+        public bool showType = false;
 
-    /// <summary>
-    /// This is a list of all the current messages in the console.
-    /// This list gets cleared with ClearLogs() and is stored in the same format as normal unity logs.
-    /// Read Only!
-    /// </summary>
-    public List<ConsoleMessage> messages  { get; private set; }
+        [SerializeField]
+        private InputField input;
+        [SerializeField]
+        private Text output;
+        [SerializeField]
+        private GameObject consoleHolder;
+        [SerializeField]
+        private bool DoNotDestroyOnLoad = true;
 
-    private GameObject mainWindow;
-    private GameObject consoleHUD;
-    private TextMeshProUGUI logsCounter, warningsCounter, errosCounter;
-    private TextMeshProUGUI output;
-    private RectTransform outputTransform;
-    private TMP_InputField inputfield;
-    private List<Command> commands = new List<Command>();
-    private static UConsole uConsole;
+        private List<string> lines = new List<string>();
+        private string[] visableLines;
+        private int startLine = 0;
 
-    private void Awake()
-    {
-        DontDestroyOnLoad(this);
-        if (uConsole == null)
-            uConsole = this;
-        else
-            Destroy(gameObject);
-
-        messages = new List<ConsoleMessage>();
-        mainWindow = transform.Find("MainWindow").gameObject;
-        consoleHUD = transform.Find("ConsoleHUD").gameObject;
-        logsCounter = consoleHUD.transform.GetChild(0).GetComponent<TextMeshProUGUI>();
-        warningsCounter = consoleHUD.transform.GetChild(1).GetComponent<TextMeshProUGUI>();
-        errosCounter = consoleHUD.transform.GetChild(2).GetComponent<TextMeshProUGUI>();
-        output = mainWindow.transform.GetChild(1).GetComponentInChildren<TextMeshProUGUI>();
-        outputTransform = output.rectTransform;
-        inputfield = mainWindow.GetComponentInChildren<TMP_InputField>();
-        mainWindow.SetActive(false);
-        consoleHUD.SetActive(enableHUD);
-    }
-
-    private void OnEnable()
-    {
-        Application.logMessageReceived += LogReceived;
-        Log("UConsole Started!");
-    }
-
-    private void Start()
-    {
-        AddCommand("test", "Just a test command display the different types of messages you can get", Test);
-        AddCommand("ping", "says a message back", Ping);
-        AddCommand("clear", "clears the console", ClearLogs);
-        AddCommand("uconsole.hud", "Used to enable or disable the hud of UConsole at the top, requires 1 more arguemnt eg \"uconsole.hud true\"",SetHUD);
-        AddCommand("uconsole.mouse", "If the mouse gets unlocked when opening UConsole, requires 1 more arguemnt eg \"uconsole.mouse false\"", SetMouse);
-        AddCommand("uconsole.debug", "If you want UConsole to output its debug messages to the console, requires 1 more arguemnt eg \"uconsole.debug false\"", ToggleDebug);
-        AddCommand("help", "Displays all the possiable commands including custom ones, Help can take 1 extra arg which is help and then a command to just display about that one command", Help);
-    }
-
-    private void Update()
-    {
-        CheckForKeys();
-    }
-
-    private void OnDisable()
-    {
-        Application.logMessageReceived -= LogReceived;
-    }
-
-    private void CheckForKeys()
-    {
-        if (Input.GetKeyDown(consoleKey))
+        private void Awake()
         {
-            SetActive(!isOpen);
-            ToggleMouse();
+            if (UConsole.instance == null)
+                UConsole.instance = this;
+            else
+                Destroy(this.gameObject);
+
+            if (DoNotDestroyOnLoad)
+                DontDestroyOnLoad(this.gameObject);
+        }
+        private void Start()
+        {
+            CreateDefaultCommands();
+            Application.logMessageReceived += LogMessageReceived;
+            consoleHolder.SetActive(isEnabled);
         }
 
-        if (inputfield.text != "" && inputfield.isFocused && Input.GetKey(KeyCode.Return))
+        private void LogMessageReceived(string condition, string stackTrace, LogType type)
         {
-            FindCommand();
+            lines.Add((showType? type.ToString() + ": " : "") + condition);
         }
-    }
-
-    private void Focus()
-    {
-        inputfield.ActivateInputField();
-        inputfield.Select();
-    }
-
-    private void ToggleMouse()
-    {
-        if (enableMouse)
+        private void CreateDefaultCommands()
         {
-            if (Cursor.lockState == CursorLockMode.Locked)
+            UCommand helpcommand = new UCommand("help", "help <command>");
+            helpcommand.callbacks.Add(Help);
+            AddCommand(helpcommand);
+
+            UCommand clearcommand = new UCommand("clear", "clear");
+            clearcommand.callbacks.Add(Clear);
+            AddCommand(clearcommand);
+        }
+        private void Clear(string[] obj)
+        {
+            lines = new List<string>();
+            startLine = 0;
+            UpdateVisableLines();
+        }
+        private void Help(string[] obj)
+        {
+            if (obj.Length == 0)
             {
-                Cursor.lockState = CursorLockMode.None;
-                Log("Cursor State set to None");
-            }
-            else if (Cursor.lockState == CursorLockMode.None)
-            {
-                Cursor.lockState = CursorLockMode.Locked;
-                Log("Cursor State set to Locked");
-            }
-        }
-    }
-
-    public void ToggleHud()
-    {
-        consoleHUD.SetActive(enableHUD);
-        Log("Hud visibility has been set to " + enableHUD);
-    }
-
-    /// <summary>
-    /// Used to open or close the Main console window
-    /// </summary>
-    public void SetActive(bool state)
-    {
-        Log("Setting UConsole sate to " + state);
-        isOpen = state;
-        mainWindow.SetActive(state);
-
-        if (state)
-            Focus();
-    }
-
-    /// <summary>
-    /// Add custom commands into UConsole
-    /// </summary>
-    public void AddCommand(string command, string description, Action action)
-    {
-        Regex regex = new Regex("^[a-zA-Z0-9.]*$");
-        if (command.Contains(" "))
-        {
-            Debug.LogError("Command " + command + " contains spaces!");
-        }
-        else if (!regex.IsMatch(command))
-        {
-            Debug.LogError("Command " + command + " contains invalids characters!");
-        }
-        else
-        {
-            foreach (Command c in commands)
-            {
-                if (c.command.ToLower().Equals(command.ToLower()))
+                Debug.Log("All Commands");
+                for (int i = 0; i < commands.Count; i++)
                 {
-                    Debug.LogError("Command " + command + " is already registered!");
+                    Debug.Log(commands[i].command + " \"" + commands[i].usage + "\"");
+                }
+            }
+            else
+            {
+                for (int i = 0; i < commands.Count; i++)
+                {
+                    if (commands[i].command.ToLower() == obj[0].ToLower())
+                    {
+                        Debug.Log("Command : " + commands[i].command + " \"" + commands[i].usage + "\"");
+                        break;
+                    }
+                    
+                }
+            }
+                
+        }
+        private void Update()
+        {
+            if (Input.GetKeyDown(ToggleConsoleKey))
+            {
+                consoleHolder.SetActive(!isEnabled);
+                isEnabled = !isEnabled;
+            }
+
+            if (isEnabled)
+                IsEnabled();
+        }
+        private void IsEnabled()
+        {
+            if (input.text != string.Empty && Input.GetKeyDown(KeyCode.Return))
+            {
+                RunCommand(input.text);
+                input.text = string.Empty;
+                startLine = lines.Count - (lines.Count > 9 ? 9 : lines.Count);
+                UpdateVisableLines();
+                input.Select();
+            }
+
+            if (Input.GetKeyDown(KeyCode.UpArrow))
+            {
+                startLine--;
+                UpdateVisableLines();
+            }
+            else if (Input.GetKeyDown(KeyCode.DownArrow))
+            {
+                startLine++;
+                UpdateVisableLines();
+            }
+        }
+        private void UpdateVisableLines()
+        {
+            startLine = Mathf.Clamp(startLine, 0, lines.Count - (lines.Count > 9 ? 9 : lines.Count));
+            visableLines = new string[(lines.Count > 9 ? 9 : lines.Count)];
+            Array.Copy(lines.ToArray(), startLine, visableLines, 0, lines.Count >= 9 ? 9 : lines.Count);
+            output.text = string.Join("\n", visableLines);
+        }
+        public void RunCommand(string command)
+        {
+            Debug.Log(command);
+            string[] args = command.Split(' ');
+            for (int i = 0; i < commands.Count; i++)
+            {
+                if (commands[i].command.ToLower() == args[0].ToLower())
+                {
+                    string[] shortargs = new string[args.Length - 1];
+                    Array.Copy(args, 1, shortargs, 0, args.Length - 1);
+                    for (int j = 0; j < commands[i].callbacks.Count; j++)
+                    {
+                        commands[i].callbacks[j].Invoke(shortargs);
+                    }
                     return;
                 }
             }
-
-            Command newCommand = new Command();
-            newCommand.action = action;
-            newCommand.command = command;
-            newCommand.description = description;
+            Debug.LogError("Unknow command " + command + ". Try \"help\" to see all the commands");
+        }
+       
+        public void AddCommand(UCommand newCommand)
+        {
             commands.Add(newCommand);
-            Log(newCommand.command + " has been added");
         }
-
-    }
-
-    /// <summary>
-    /// Removes any custom commands
-    /// </summary>
-    public void RemoveCommand(string command)
-    {
-        for (int i = 0; i < commands.Count; i++)
+        public bool RemoveCommand(string command)
         {
-            if (commands[i].command == command)
+            for (int i = 0; i < command.Length; i++)
             {
-                commands.RemoveAt(i);
-                Log(command + " has been removed");
-                return;
-            }
-        }
-
-        Debug.LogError(command + " could not be found to be removed from UConsole");
-    }
-
-    private void Log(object obj)
-    {
-        if (debugUConsole)
-            Debug.Log(obj);
-    }
-
-    private void LogReceived(string condition, string stackTrace, LogType type)
-    {
-        ConsoleMessage lastMessage = new ConsoleMessage();
-        lastMessage.condition = condition;
-        lastMessage.stackTrace = stackTrace;
-        lastMessage.type = type;
-        messages.Insert(0, lastMessage);
-  
-        output.text = output.text + LogToString(lastMessage);
-
-        if (type == LogType.Error)
-        {
-            errorCount++;
-        }
-        else if (type == LogType.Warning)
-        {
-            warningCount++;
-        }
-        else if (type == LogType.Log)
-        {
-            logCount++;
-        }
-
-        UpdateCounters();
-    }
-
-    private string LogToString(ConsoleMessage log)
-    {
-        string returnMessage = @"
-";
-
-        if (log.type == LogType.Error)
-        {
-            returnMessage += "<color=\"red\">";
-        }
-        else if (log.type == LogType.Warning)
-        {
-            returnMessage += "<color=#FFFF00>";
-        }
-        else if (log.type == LogType.Log)
-        {
-            returnMessage += "<color=#FFFFFF>";
-        }
-        returnMessage += log.condition;
-        return returnMessage;
-    }
-
-    private void UpdateCounters()
-    {
-        logsCounter.text = logCount.ToString();
-        warningsCounter.text = warningCount.ToString();
-        errosCounter.text = errorCount.ToString();
-    }
-
-    /// <summary>
-    /// Clears the in game console logs by destorying all the gameobjects and reseting the counters
-    /// </summary>
-    public void ClearLogs()
-    {
-        output.text = "";
-        messages.Clear();
-        logCount = 0;
-        warningCount = 0;
-        errorCount = 0;
-    }
-
-    public void FindCommand()
-    {
-        string message = inputfield.text;
-        inputfield.text = "";
-        Focus();
-        Log("Command Received: " + message);
-        string[] args = message.Split(' ');
-
-        for (int i = 0; i < commands.Count; i++)
-        {
-            if (commands[i].command == args[0])
-            {
-                lastArgs = args;
-                commands[i].action();
-                return;
-            }
-        }
-
-        UnknowCommand(message);
-    }
-
-    private void Test()
-    {
-        Debug.Log("This is an log message");
-        Debug.LogWarning("This is an warning message");
-        Debug.LogError("This is an error message");
-    }
-
-    private void Ping()
-    {
-        Debug.Log("Pong!");
-    }
-
-    private void Help()
-    {
-        string[] args = lastArgs;
-        if (args.Length == 1)
-        {
-            LogReceived("<b> <align=\"center\"> Help </align> </b>", "", LogType.Log);
-            LogReceived("", "", LogType.Log);
-            for (int i = 0; i < commands.Count; i++)
-            {
-                LogReceived("<b>" + commands[i].command + "</b>", "", LogType.Log);
-                LogReceived(commands[i].description, "", LogType.Log);
-                LogReceived("", "", LogType.Log);
-            }
-        }
-        else
-        {
-            for (int i = 0; i < commands.Count; i++)
-            {
-                if (commands[i].command == args[1])
+                if (commands[i].command == command)
                 {
-                    LogReceived("<b> Help </b>", "", LogType.Log);
-                    LogReceived("", "", LogType.Log);
-                    LogReceived("<b>" + commands[i].command + "</b>", "", LogType.Log);
-                    LogReceived(commands[i].description, "", LogType.Log);
-                    return;
+                    commands.RemoveAt(i);
+                    return true;
                 }
             }
-
-            LogReceived("Unknow Command", "", LogType.Warning);
+            return false;
         }
     }
 
-    private void ToggleDebug()
+    public class UCommand
     {
-        string[] args = lastArgs;
-        if (args.Length < 2)
+        public string command { private set; get; }
+        public string usage { private set; get; }
+        public List<Action<string[]>> callbacks;
+        public UCommand (string command, string usage)
         {
-            Debug.LogError("uconsole.debug requires another argument eg \"uconsole.debug false\"");
-        }
-        else if (args[1] == "false" || args[1] == "False" || args[1] == "0" || args[1] == "f" || args[1] == "F")
-        {
-            debugUConsole = false;
-            Debug.Log("UConsole Debug Mode is now " + debugUConsole);
-        }
-        else if (args[1] == "true" || args[1] == "True" || args[1] == "1" || args[1] == "t" || args[1] == "T")
-        {
-            debugUConsole = true;
-            Debug.Log("UConsole Debug Mode is now " + debugUConsole);
-        }
-        else
-        {
-            Debug.LogWarning("Unknow argument of " + args[1]);
-            Debug.Log("uconsole.debug requires another argument eg \"uconsole.debug false\"");
+            this.command = command;
+            this.usage = usage;
+            callbacks = new List<Action<string[]>>();
         }
     }
 
-    private void SetHUD()
-    {
-        string[] args = lastArgs;
-        if (args.Length < 2)
-        {
-            Debug.LogError("uconsole.hud requires another argument eg \"uconsole.hud false\"");
-        }
-        else if (args[1] == "false" || args[1] == "False" || args[1] == "0" || args[1] == "f" || args[1] == "F")
-        {
-            enableHUD = false;
-            Debug.Log("UConsole's HUD now hidden");
-        }
-        else if (args[1] == "true" || args[1] == "True" || args[1] == "1" || args[1] == "t" || args[1] == "T")
-        {
-            enableHUD = true;
-            Debug.Log("UConsole's HUD now visiable");
-        }
-        else
-        {
-            Debug.LogWarning("Unknow argument of " + args[1]);
-            Debug.Log("uconsole.hud requires another argument eg \"uconsole.hud false\"");
-        }
-        ToggleHud();
-    }
-
-    private void SetMouse()
-    {
-        string[] args = lastArgs;
-        if (args.Length < 2)
-        {
-            Debug.LogError("uconsole.mouse requires another argument eg \"uconsole.mouse false\"");
-        }
-        else if (args[1] == "false" || args[1] == "False" || args[1] == "0" || args[1] == "f" || args[1] == "F")
-        {
-            enableMouse = false;
-            Debug.Log("Your mouse will now stay its current state when using UConsole");
-        }
-        else if (args[1] == "true" || args[1] == "True" || args[1] == "1" || args[1] == "t" || args[1] == "T")
-        {
-            enableMouse = true;
-            Debug.Log("Your mouse will now show and hide when using UConsole");
-        }
-        else
-        {
-            Debug.LogWarning("Unknow argument of " + args[1]);
-            Debug.Log("uconsole.mouse requires another argument eg \"uconsole.mouse false\"");
-        }
-    }
-
-    private void UnknowCommand(string message)
-    {
-        Debug.LogWarning("Unknow Command: " + message);
-    }
-}
-
-public class Command
-{
-    /// <summary>
-    /// This is the description of the command, this description will be used in the help menu explain what this command does 
-    /// </summary>
-    public string description;
-    /// <summary>
-    /// This is the command which you type into the console to run it
-    /// </summary>
-    public string command;
-    /// <summary>
-    /// This is the action which UConsole will call. 
-    /// </summary>
-    public Action action;
 }
