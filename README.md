@@ -17,4 +17,4 @@ Then you should be all set up and ready to start using it.
 - Simple drag and drop into your first scene
 - No extra requirements, uses basic unity items.
 
-![Image of UConsole](https://raw.githubusercontent.com/MarshMello0/UConsole/master/Images/uconsole.png)
+![Image of UConsole](https://raw.githubusercontent.com/MarshMello0/UConsole/master/Images/uconsole.PNG)
